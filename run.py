@@ -24,6 +24,7 @@ from sklearn.metrics            import recall_score, f1_score, roc_auc_score, me
 from sklearn.metrics            import plot_precision_recall_curve, plot_roc_curve
 from sklearn.linear_model       import LinearRegression, Ridge, Lasso, SGDRegressor, LogisticRegression
 from sklearn.svm                import SVR
+from sklearn.feature_selection  import mutual_info_regression
 
 #################################################################################
 # Decisão se o código vai rodar como predição ou validação
@@ -139,19 +140,22 @@ def pretrain_change_data(data):
 # ONE-HOT ENCODING
 # --------------------------------------
 def pretrain_data_one_hot_encoding(data):
-    # data = pd.get_dummies(data,columns=['tipo'])
-    # data = pd.get_dummies(data,columns=['tipo_vendedor'])
-    # data = pd.get_dummies(data,columns=['bairro'])
-
-    # for label, content in data.items():
-    #     if (label == 'tipo' or label == 'tipo_vendedor' or label == 'bairro'):
-    #         data[label] = pd.Categorical(content).codes+1
-
+    one_hot_encoding_params = [
+        'tipo',
+        'tipo_vendedor',
+        'bairro'
+        ]
+    data = pd.get_dummies(data,columns=one_hot_encoding_params)
     return data
 
 def pretrain_categorical_data_formater(data):
+    one_hot_encoding_params = [
+        'tipo',
+        'tipo_vendedor',
+        'bairro'
+        ]
     for label, content in data.items():
-        if (label == 'tipo' or label == 'tipo_vendedor' or label == 'bairro'):
+        if (label in one_hot_encoding_params):
             data[label] = pd.Categorical(content).codes+1
     return data
 
@@ -197,12 +201,6 @@ def split_inputs_outputs(data):
     x = data.loc[:,data.columns!='preco']
     y = data.loc[:,data.columns=='preco']
     return x, y
-# def split_inputs_outputs(data):
-#     size = len(data.T)
-#     print(data)
-#     x = data[:,:size-1]
-#     y = data[:,size-1]
-#     return x, y.ravel()
 
 def concat_train_test(train, test):
     return pd.concat([train, test], ignore_index=True)
@@ -317,7 +315,12 @@ def train_GradientBoostingRegressor(x_train, y_train):
     return model.fit(x_train,y_train)
 
 def train_AdaBoostRegressor(x_train, y_train):
-    model = AdaBoostRegressor(random_state=0)
+    model = AdaBoostRegressor(
+        random_state=0,
+        n_estimators=65,
+        learning_rate=0.75,
+        loss='exponential' # linear, square, exponential
+        )
     return model.fit(x_train,y_train)
 
 #-------------------------------------------------------------------------------
@@ -388,12 +391,12 @@ def cross_validation_KNN(x, y):
     print ( " --   ------")
     cross_val = 5
     for k in range(501,550,2):
-        classificator = KNeighborsRegressor(
+        regressor = KNeighborsRegressor(
             n_neighbors = k,
             weights     = 'uniform',
             p           = 1)
 
-        scores = cross_val_score(classificator, x, y, cv=cross_val)
+        scores = cross_val_score(regressor, x, y, cv=cross_val)
         
         print ('k = %2d' % k, 'Acurácia média = %6.1f' % (100*sum(scores)/cross_val))
         
@@ -405,10 +408,10 @@ def cross_validation_Random_Forest(x, y):
 
     cross_val = 5
 
-    for depth in range(1,5):
-        classificator = train_Random_Forest(x, y, depth)
+    for depth in range(15,30):
+        regressor = train_Random_Forest(x, y, depth)
 
-        scores = cross_val_score(classificator, x, y, cv=cross_val)
+        scores = cross_val_score(regressor, x, y, cv=cross_val)
         
         print (' %2d' % depth, 'Acurácia média = %6.1f' % (100*sum(scores)/cross_val))
         
@@ -508,8 +511,8 @@ def plot_curves(model, x_test, y_pred):
 #################################################################################
 def preprocessing(data):
     data = pretrain_change_data(data)
-    data = pretrain_data_one_hot_encoding(data)
-    data = shuffle_data(data)
+    # data = pretrain_data_one_hot_encoding(data)
+    # data = shuffle_data(data)
     return data
 
 if __name__ == "__main__":
@@ -541,26 +544,6 @@ if __name__ == "__main__":
     # Move a coluna de preco para a ultima coluna
     train_data = move_price_to_end(train_data, 'preco')
 
-
-    # train_col = [""] * len(train_data.columns)
-    # test_col = [""] * len(test_data.columns)
-
-    # for i, col in enumerate(train_data.columns):
-    #     train_col[i] = col
-    # for i, col in enumerate(test_data.columns):
-    #     test_col[i] = col
-
-    # sum_score = 0
-    # for i in range(len(test_data.columns)):
-    #     print(train_col[i], " | ", test_col[i])
-    #     sum_score = (1 + sum_score) if (train_col[i] == test_col[i]) else sum_score
-
-    # score = sum_score/len(test_data.columns)
-    # ## print('\n\n\n')
-    # print("===> Acurácia: %6.1f %%" % (100*score))
-
-
-
     # Split dos dados de input e outout do treinamento
     x_train, y_train = split_inputs_outputs(train_data)
     x_test = test_data
@@ -575,22 +558,38 @@ if __name__ == "__main__":
     data = adjust_scale(data)
     x_train, x_test = split_train_test(data, x_train_rows)
 
+    # Obtenção dos parametros que influenciam no resultado final
+    mutual_info = mutual_info_regression(x_train, y_train, random_state=42, n_neighbors=10)
+    mutual_info = pd.Series(mutual_info)
+    mutual_info.index = x_train.columns
+    mutual_info = mutual_info.sort_values(ascending=False)
+    mutual_info.plot.bar(figsize=(15,5))
+    # Seleção dos parametros que influenciam no resultado final
+    selected_top_columns = []
+    for x in range(len(mutual_info)):
+        if (mutual_info[x] > 0.0):
+            selected_top_columns.append(mutual_info.index[x])
+    x_train = x_train[selected_top_columns]
+    x_test = x_test[selected_top_columns]
+
     if (MODE_VALIDATION):
         validation(x_train, y_train)
     elif (MODE_CROSS_VALIDATION):
-        cross_validation_KNN(x_train, y_train)
-        # cross_validation_Random_Forest(x_train, y_train)
+        # cross_validation_KNN(x_train, y_train)
+        cross_validation_Random_Forest(x_train, y_train)
         # cross_validation_Polynomial_Regression(x_train, y_train)
         # cross_validation_SVR_Regression(x_train, y_train)
     else:
-        # model_trained = train_KNN(x_train, y_train, 501, 1)
+        # model_trained = train_KNN(x_train, y_train, 10, 1)
+        # model_trained = train_SVR_linear(x_train, y_train)
+        # model_trained = train_SVR_poly(x_train, y_train)
         # model_trained = train_SVR_RBF(x_train, y_train)
 
         # model_trained = train_GridSearchCV(x_train, y_train)
         # model_trained = train_GradientBoostingRegressor(x_train, y_train)
         model_trained = train_AdaBoostRegressor(x_train, y_train)
         
-        # depth = 20
+        # depth = 15
         # model_trained = train_Random_Forest(x_train, y_train, depth)
 
         # Predição
@@ -599,7 +598,7 @@ if __name__ == "__main__":
         
         # Indicação das métricas
         rmse, r2 = get_error_metrics (y_train, y_predict_train)
-        print('\n RMSE = %2.4f  R2 = %2.4f' % (rmse, r2))
+        print('\n RMSE = %2.4f  R2 = %2.4f' % (rmse/1000000.0, r2))
 
         # Plot valores
 
