@@ -67,7 +67,7 @@ Deste modo, os hiperparâmetros obtidos foram:
 
 Por fim, executando todo o desenvolvido acima, foi possível obter a seguinte resposta do código:
 
-![Resultado com Random Forest](./media/img2.png)
+![Resultado com Ada Boost Regressor](./media/img2.png)
 
 Figura 3 - Resultado do melhor modelo obtido localmente
 
