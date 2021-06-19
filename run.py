@@ -535,7 +535,7 @@ if __name__ == "__main__":
     train_data = add_difference_param_train_test(test_data, train_data)
 
     # Mostra a relação entre os parâmetros
-    # show_correlation_matrix(train_data)
+    show_correlation_matrix(train_data)
 
     # Alinha todos os parametros em ordem alfabetica
     train_data = train_data.reindex(sorted(train_data.columns), axis=1)
